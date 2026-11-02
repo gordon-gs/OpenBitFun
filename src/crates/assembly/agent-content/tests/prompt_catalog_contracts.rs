@@ -240,6 +240,25 @@ fn minimal_harness_prompt_preserves_the_concise_coding_contract() {
 }
 
 #[test]
+fn standard_mode_prompt_preserves_the_communication_contract() {
+    let prompt = agent_prompt("standard_mode").expect("standard mode prompt");
+    for required in [
+        "# Communication",
+        "let the work steps carry progress",
+        "confirm it once in one sentence",
+        "is not readiness",
+        "ask again for a decision the user already made",
+        "remove any clause whose absence leaves the user's understanding and next action unchanged",
+        "not a gate",
+    ] {
+        assert!(
+            prompt.contains(required),
+            "missing communication contract: {required}"
+        );
+    }
+}
+
+#[test]
 fn computer_use_prompt_preserves_background_observation_and_input_contract() {
     let prompt = agent_prompt("computer_use_mode").expect("ComputerUse prompt");
     for required in [
