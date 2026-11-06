@@ -18,6 +18,14 @@ final class MobileAppModel: ObservableObject {
     @Published var remoteShowUpdatedMetadata = false
     @Published var remoteShowStatusMetadata = false
     @Published var remoteViewSettingsOpen = false
+    /// Nil until the connected host answers for this target. The scheduled-jobs
+    /// panel treats nil as "not loaded yet" instead of "no jobs".
+    @Published var cronJobs: CronJobsUiState?
+    @Published var scheduledJobsOpen = false
+    /// The editor is a second sheet over the panel. `scheduledJobEditorJob`
+    /// carries nil for "create" and the row being edited otherwise.
+    @Published var scheduledJobEditorOpen = false
+    @Published var scheduledJobEditorJob: CronJobRow?
     @Published var remoteHasMore = false
     @Published var remoteHasMoreMessages = false
     @Published var remoteHistoryLoading = false
@@ -208,6 +216,9 @@ final class MobileAppModel: ObservableObject {
             },
             onCreateUnavailable: { [weak self] requestID, targetKey in
                 self?.failRemoteCreate(requestID: requestID, targetKey: targetKey)
+            },
+            onCronJobsState: { [weak self] state, targetKey, epoch in
+                self?.apply(cronJobsState: state, targetKey: targetKey, epoch: epoch)
             }
         )
         self.coreAdapter = adapter

@@ -4,6 +4,7 @@ import com.openbitfun.mobile.core.feature.relay.HostCatalogNotice
 import com.openbitfun.mobile.core.feature.relay.hostCatalogObserver
 import com.openbitfun.mobile.core.transport.RemoteSessionStreamTransport
 import com.openbitfun.mobile.core.feature.CoreLog
+import com.openbitfun.mobile.core.feature.cron.CronJobsStore
 import com.openbitfun.mobile.core.feature.session.RemoteSessionStore
 import com.openbitfun.mobile.core.feature.workspace.RemoteWorkspaceStore
 import com.openbitfun.mobile.core.persistence.MobilePersistenceStores
@@ -176,6 +177,14 @@ public class AccountStore internal constructor(
             target,
             persistence?.remoteWorkspaces,
         ).also { it.bindCatalog(catalogChanges(current, target, transport)) }
+    }
+
+    /** Scheduled jobs of the selected device. The host pushes no catalog for them. */
+    public fun createCronJobsStore(scope: CoroutineScope): CronJobsStore? {
+        val current = session ?: return null
+        val target = current.targetDeviceId?.let(::authorizedDeviceId) ?: return null
+        val transport = backend.transport(current, target)
+        return CronJobsStore.create(scope, transport)
     }
 
     /**

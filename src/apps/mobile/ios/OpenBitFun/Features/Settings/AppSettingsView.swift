@@ -61,6 +61,21 @@ struct SettingsView: View {
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("settings.notifications")
                         }
+                        if showsCurrentConnection {
+                            SettingsGroup(title: "自动化") {
+                                Button { model.openScheduledJobs() } label: {
+                                    SettingsValueRow(
+                                        icon: "clock.arrow.circlepath",
+                                        title: "定时任务",
+                                        value: "",
+                                        showsChevron: true
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("settings.scheduledJobs")
+                            }
+                        }
                         AccountDevicesSection(model: model)
                         SettingsGroup(title: "关于") {
                             VStack(spacing: 0) {

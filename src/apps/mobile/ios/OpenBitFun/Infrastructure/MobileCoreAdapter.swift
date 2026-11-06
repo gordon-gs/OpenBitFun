@@ -21,6 +21,7 @@ final class MobileCoreAdapter {
     }
     private var remoteSession: RemoteSessionStore?
     private var remoteWorkspace: RemoteWorkspaceStore?
+    private var cronJobs: CronJobsStore?
     private var remoteTargetKey: String?
     private var remoteTargetEpoch: UInt64 = 0
     private var desiredRemoteTarget: DesiredRemoteTarget?
@@ -54,6 +55,7 @@ final class MobileCoreAdapter {
     var onDirectoryState: ((DeviceDirectoryUiState, UInt64) -> Void)?
     var onCreateOperation: ((CreateSessionOperationState, String) -> Void)?
     var onCreateUnavailable: ((String, String?) -> Void)?
+    var onCronJobsState: ((CronJobsUiState, String, UInt64) -> Void)?
 
     init(
         onAccountState: ((AccountUiState, UInt64) -> Void)? = nil,
@@ -63,7 +65,8 @@ final class MobileCoreAdapter {
         onWorkspaceState: ((RemoteWorkspaceUiState, String, UInt64) -> Void)? = nil,
         onDirectoryState: ((DeviceDirectoryUiState, UInt64) -> Void)? = nil,
         onCreateOperation: ((CreateSessionOperationState, String) -> Void)? = nil,
-        onCreateUnavailable: ((String, String?) -> Void)? = nil
+        onCreateUnavailable: ((String, String?) -> Void)? = nil,
+        onCronJobsState: ((CronJobsUiState, String, UInt64) -> Void)? = nil
     ) {
         self.scope = MainScope()
         let defaults = UserDefaults.standard
@@ -91,6 +94,7 @@ final class MobileCoreAdapter {
         self.onDirectoryState = onDirectoryState
         self.onCreateOperation = onCreateOperation
         self.onCreateUnavailable = onCreateUnavailable
+        self.onCronJobsState = onCronJobsState
 
         rebindDirectoryObservation(generation: directoryGeneration)
 
@@ -470,6 +474,16 @@ final class MobileCoreAdapter {
         remoteWorkspace?.dispatch(intent: RemoteWorkspaceIntentLoad.shared)
     }
 
+    var hasCronJobsTarget: Bool { cronJobs != nil }
+    func loadCronJobs() { cronJobs?.dispatch(intent: CronJobsIntentLoad.shared) }
+    func refreshCronJobs() { cronJobs?.dispatch(intent: CronJobsIntentRefresh.shared) }
+    func setCronJobEnabled(jobId: String, enabled: Bool) {
+        cronJobs?.dispatch(intent: CronJobsIntentSetEnabled(jobId: jobId, enabled: enabled))
+    }
+    func deleteCronJob(jobId: String) { cronJobs?.dispatch(intent: CronJobsIntentDelete(jobId: jobId)) }
+    func saveCronJob(_ draft: CronJobDraft) { cronJobs?.dispatch(intent: CronJobsIntentSave(draft: draft)) }
+    func acknowledgeCronSave() { cronJobs?.dispatch(intent: CronJobsIntentAcknowledgeSave.shared) }
+
     var currentRemoteTargetKey: String? { remoteTargetKey }
     var currentRemoteTargetEpoch: UInt64 { remoteTargetEpoch }
 
@@ -697,6 +711,21 @@ final class MobileCoreAdapter {
                 }
             })
         }
+
+        // Scheduled jobs belong to the selected host, not to a workspace: the
+        // panel lists every job that host runs and takes no workspace filter.
+        if let cronStore = account.createCronJobsStore(scope: scope) {
+            cronJobs = cronStore
+            let cronFlow = SkieSwiftStateFlow<CronJobsUiState>(cronStore.state)
+            onCronJobsState?(cronFlow.value, targetKey, boundEpoch)
+            remoteObservations.append(Task { [weak self] in
+                for await state in cronFlow {
+                    guard !Task.isCancelled else { return }
+                    self?.onCronJobsState?(state, targetKey, boundEpoch)
+                }
+            })
+            cronStore.dispatch(intent: CronJobsIntentLoad.shared)
+        }
     }
 
     private func resetRemoteStores() {
@@ -705,8 +734,10 @@ final class MobileCoreAdapter {
         remoteObservations.removeAll()
         remoteSession?.dispatch(intent: RemoteSessionIntentStop.shared)
         remoteWorkspace?.dispatch(intent: RemoteWorkspaceIntentStop.shared)
+        cronJobs?.dispatch(intent: CronJobsIntentStop.shared)
         remoteSession = nil
         remoteWorkspace = nil
+        cronJobs = nil
         remoteTargetKey = nil
     }
 

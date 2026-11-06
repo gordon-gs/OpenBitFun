@@ -152,6 +152,13 @@ struct MobileShellView: View {
             input: adaptiveInput,
             kind: .remoteViewSettings
         )
+        // The scheduled-jobs sheet reuses the view-settings geometry: it is the
+        // only existing half-height list placement, and adding a policy kind
+        // would change a shared enum Android also switches on.
+        let scheduledJobsPlacement = SettingsPlacementPolicy.shared.resolve(
+            input: adaptiveInput,
+            kind: .remoteViewSettings
+        )
         let previewLayout = FilePreviewPlacementPolicy.shared.resolveLayout(
             previewVisible: model.filePreview != nil,
             largeScreenLayout: wide,
@@ -276,6 +283,12 @@ struct MobileShellView: View {
             placement: remoteViewSettingsPlacement
         ) {
             RemoteViewSettingsView(model: model)
+        }
+        .openBitFunAdaptiveModal(
+            isPresented: $model.scheduledJobsOpen,
+            placement: scheduledJobsPlacement
+        ) {
+            ScheduledJobsView(model: model)
         }
         .openBitFunAdaptiveModal(
             isPresented: $model.devicePickerOpen,
