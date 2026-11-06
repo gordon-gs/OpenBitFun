@@ -64,7 +64,7 @@ struct MobileShellView: View {
                             session: session,
                             presentation: .popover,
                             canViewDetails: true,
-                            canArchive: false,
+                            canArchive: remote,
                             canExport: false,
                             canDelete: true,
                             onViewDetails: {
@@ -73,7 +73,9 @@ struct MobileShellView: View {
                                     model.showSessionDetails(session)
                                 }
                             },
-                            onArchive: {},
+                            onArchive: {
+                                model.archiveRemoteSession(session)
+                            },
                             onExport: {},
                             onDelete: {
                                 model.deleteRemoteSession(session)

@@ -99,11 +99,13 @@ struct SidebarView: View {
                 session: session,
                 presentation: .bottomSheet,
                 canViewDetails: true,
-                canArchive: false,
+                canArchive: model.surface == .remote,
                 canExport: false,
                 canDelete: true,
                 onViewDetails: { openDetails(afterClosing: session) },
-                onArchive: {},
+                onArchive: {
+                    model.archiveRemoteSession(session)
+                },
                 onExport: {},
                 onDelete: {
                     model.deleteRemoteSession(session)

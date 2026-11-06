@@ -15,6 +15,11 @@ import com.openbitfun.mobile.core.feature.relay.HostCatalogNotice
 import com.openbitfun.mobile.core.domain.ChatSyncPhase
 import com.openbitfun.mobile.core.domain.ChatTranscriptOrigin
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.jsonPrimitive
 
 import com.openbitfun.mobile.core.domain.ChatMessage
@@ -41,6 +46,7 @@ import com.openbitfun.mobile.core.protocol.RemoteCommand
 import com.openbitfun.mobile.core.protocol.RemotePermissionMode
 import com.openbitfun.mobile.core.protocol.RemoteModelCatalog
 import com.openbitfun.mobile.core.protocol.isError
+import com.openbitfun.mobile.core.protocol.CommandStatus
 import com.openbitfun.mobile.core.protocol.CommandStatusResponse
 import com.openbitfun.mobile.core.protocol.PermissionModeResponse
 import com.openbitfun.mobile.core.protocol.SetSessionModelResponse
@@ -238,6 +244,7 @@ public class RemoteSessionStore internal constructor(
                 intent.requestId.trim().ifEmpty { nextRequestId() },
             )
             is RemoteSessionIntent.DeleteSession -> deleteSession(intent.sessionId)
+            is RemoteSessionIntent.ArchiveSession -> archiveSession(intent.sessionId)
             is RemoteSessionIntent.RenameSession -> renameSession(intent)
             is RemoteSessionIntent.AnswerQuestion -> runAction(
                 intent.sessionId,
@@ -1632,6 +1639,86 @@ public class RemoteSessionStore internal constructor(
         }
     }
 
+    /**
+     * Archives one session on the host.
+     *
+     * `archive_session` is a desktop command rather than a Remote Connect verb,
+     * so it travels through `host_invoke`; its request fields are snake_case
+     * because the desktop struct carries no rename rule. The stored transcript
+     * stays on both ends — only the row leaves the list, which is what the
+     * desktop does too. Unlike delete, this never drops local caches.
+     */
+    private fun archiveSession(sessionId: String) {
+        val normalized = sessionId.trim()
+        if (normalized.isEmpty()) return
+        val current = _state.value as? RemoteSessionUiState.Ready ?: return
+        val row = current.sessions.firstOrNull { it.id == normalized } ?: return
+        setBusy(current, true)
+        val operationToken = beginWork()
+        work = scope.launch {
+            try {
+                val result = transport.send<ArchiveHostResult>(
+                    RemoteCommand(
+                        cmd = "host_invoke",
+                        command = "archive_session",
+                        args = buildJsonObject { put("request", archiveRequest(row)) },
+                    )
+                )
+                check(result.ok && !result.isError) {
+                    result.error ?: result.message ?: "Archive failed"
+                }
+                if (!isCurrentWork(operationToken)) return@launch
+                // Archiving the open conversation ends the projection, exactly as
+                // deleting it does: the row it belongs to is gone.
+                val closingOpenSession = current.selectedSessionId == normalized
+                if (closingOpenSession) {
+                    sessionUpdates?.cancel()
+                    transcriptWrite?.cancel()
+                    timelineStore.reset("")
+                }
+                if (!isCurrentWork(operationToken)) return@launch
+                val ready = (_state.value as? RemoteSessionUiState.Ready) ?: current
+                val afterArchive = ready.copy(
+                    sessions = ready.sessions.filterNot { it.id == normalized },
+                    selectedSessionId = ready.selectedSessionId.takeUnless { closingOpenSession },
+                    timeline = if (closingOpenSession) null else ready.timeline,
+                    permissionMode = if (closingOpenSession) null else ready.permissionMode,
+                    busy = false,
+                )
+                publishAuthorityReady(afterArchive)
+                // The replica must forget the row too, or a restart shows a
+                // session this host no longer lists.
+                if (persistenceEnabled) {
+                    persistedSessionSlice()?.let { persisted ->
+                        savePersistedSessionRows(
+                            persisted.sessions.filterNot { it.sessionId == normalized },
+                            persisted.hasMore,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                if (isCurrentWork(operationToken)) {
+                    setBusy((_state.value as? RemoteSessionUiState.Ready) ?: current, false)
+                    handleFailure(error, (_state.value as? RemoteSessionUiState.Ready) ?: current)
+                    if (current.selectedSessionId == normalized && isCurrentWork(operationToken)) {
+                        runCatching { openSession(normalized, operationToken) }
+                    }
+                }
+            }
+        }
+    }
+
+    /** The desktop's `ArchiveSessionRequest`, as the wire spells it. */
+    private fun archiveRequest(row: RemoteSession): JsonObject = buildJsonObject {
+        put("session_id", row.id)
+        row.workspaceIdentity?.workspaceId?.let { put("workspace_id", it) }
+        put("workspace_path", row.workspaceIdentity?.path ?: row.workspacePath.orEmpty())
+        row.workspaceIdentity?.remoteConnectionId?.let { put("remote_connection_id", it) }
+        row.workspaceIdentity?.remoteSshHost?.let { put("remote_ssh_host", it) }
+    }
+
     private fun renameSession(intent: RemoteSessionIntent.RenameSession) {
         val sessionId = intent.sessionId.trim()
         val title = intent.title.trim()
@@ -2265,6 +2352,15 @@ public class RemoteSessionStore internal constructor(
 
     }
 }
+
+@Serializable
+private data class ArchiveHostResult(
+    override val resp: String? = null,
+    override val message: String? = null,
+    val ok: Boolean = false,
+    val value: JsonElement = JsonNull,
+    val error: String? = null,
+) : CommandStatus
 
 @Serializable
 private data class StoredRemoteMessagePayload(

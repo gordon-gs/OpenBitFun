@@ -19,10 +19,12 @@ public data class SessionActionCapabilities public constructor(
 /**
  * What a session row's overflow menu may offer.
  *
- * Ported from `pages/policy/SessionActionPolicy.ets`. Archive and export are
- * local-storage operations, so a remote session never offers them however it is
- * typed; while a command is in flight nothing is offered at all, because the
- * row the menu was opened over may not survive the answer.
+ * Ported from `pages/policy/SessionActionPolicy.ets` and updated for the host
+ * command surface: archive is a round trip (`archive_session`, Proxied) so a
+ * remote session offers it, while export is a local-storage operation only the
+ * on-device chat list can perform. While a command is in flight nothing is
+ * offered at all, because the row the menu was opened over may not survive the
+ * answer.
  */
 public object SessionActionPolicy {
     public fun resolve(
@@ -32,7 +34,7 @@ public object SessionActionPolicy {
     ): SessionActionCapabilities {
         if (busy) return SessionActionCapabilities(false, false, false, false)
         if (scope == SessionActionScope.REMOTE) {
-            return SessionActionCapabilities(true, false, false, true)
+            return SessionActionCapabilities(true, true, false, true)
         }
         // Two names for one kind: the desktop and the HarmonyOS client say
         // "chat", the on-device store writes "general_chat" into its own rows.

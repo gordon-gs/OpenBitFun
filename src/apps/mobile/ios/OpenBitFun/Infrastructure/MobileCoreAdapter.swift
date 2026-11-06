@@ -307,6 +307,12 @@ final class MobileCoreAdapter {
         )
     }
 
+    /// `archive_session` is a desktop command, so the shared store sends it over
+    /// `host_invoke` like any other host-side session edit.
+    func archiveRemoteSession(sessionID: String) {
+        remoteSession?.dispatch(intent: RemoteSessionIntentArchiveSession(sessionId: sessionID))
+    }
+
     func answerRemoteTool(sessionID: String, toolID: String, answer: String) {
         remoteSession?.dispatch(
             intent: RemoteSessionIntentAnswerQuestion(sessionId: sessionID, toolId: toolID, answer: answer)

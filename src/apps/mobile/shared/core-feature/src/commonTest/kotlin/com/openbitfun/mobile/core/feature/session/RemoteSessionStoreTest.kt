@@ -1410,6 +1410,28 @@ class RemoteSessionStoreTest {
     }
 
     @Test
+    fun archiveSendsTheDesktopCommandAndDropsTheRow() = runTest {
+        val transport = FakeSessionTransport()
+        val store = RemoteSessionStore(this, transport)
+        store.dispatch(RemoteSessionIntent.Load)
+        advanceUntilIdle()
+
+        store.dispatch(RemoteSessionIntent.ArchiveSession("s-code"))
+        advanceUntilIdle()
+
+        val call = transport.commands.first { it.cmd == "host_invoke" }
+        assertEquals("archive_session", call.command)
+        val request = call.args!!.jsonObject.getValue("request").jsonObject
+        // The desktop struct carries no rename rule, so the wire is snake_case.
+        assertEquals("s-code", request.getValue("session_id").jsonPrimitive.content)
+        assertNotNull(request["workspace_path"])
+
+        val ready = assertIs<RemoteSessionUiState.Ready>(store.state.value)
+        assertFalse(ready.sessions.any { it.id == "s-code" })
+        assertFalse(ready.busy)
+    }
+
+    @Test
     fun answerQuestionSendsBothSpellingsTheDesktopForwards() = runTest {
         val transport = FakeSessionTransport()
         val store = RemoteSessionStore(this, transport)
@@ -2341,6 +2363,9 @@ private class FakeSessionTransport : RemoteCommandTransport, RemoteSessionStream
     /** When set, `create_session` fails below the desktop. */
     var createFailure: RelayFailure? = null
 
+    /** When set, `host_invoke` answers `ok=false` with this host diagnostic. */
+    var archiveFailure: String? = null
+
     /** Optional command-stage gates used to exercise post-create cancellation races. */
     val commandGates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
@@ -2428,6 +2453,12 @@ private class FakeSessionTransport : RemoteCommandTransport, RemoteSessionStream
             "set_permission_mode" -> permissionSaveJson ?: """{"resp":"ok"}"""
             "ping", "delete_session", "update_session_title", "answer_question", "confirm_tool" ->
                 """{"resp":"ok"}"""
+            "host_invoke" ->
+                if (archiveFailure != null) {
+                    """{"resp":"host_invoke_result","ok":false,"error":"$archiveFailure"}"""
+                } else {
+                    """{"resp":"host_invoke_result","ok":true,"value":null}"""
+                }
             else -> error("Unexpected command ${command.cmd}")
         }
         return RelayJson.decodeFromString(deserializer, json)

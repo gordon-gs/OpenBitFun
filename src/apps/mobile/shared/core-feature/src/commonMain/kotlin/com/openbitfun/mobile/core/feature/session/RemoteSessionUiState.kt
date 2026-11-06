@@ -527,6 +527,17 @@ public sealed interface RemoteSessionIntent {
         public val sessionId: String,
     ) : RemoteSessionIntent
 
+    /**
+     * Hides one session from the host's lists (`archive_session`).
+     *
+     * Archive lives on the host, unlike export: the desktop owns the session
+     * store, so the phone asks it to change the flag and then stops drawing the
+     * row. The stored transcript stays; only the row leaves the list.
+     */
+    public data class ArchiveSession public constructor(
+        public val sessionId: String,
+    ) : RemoteSessionIntent
+
     public data class RenameSession public constructor(
         public val sessionId: String,
         public val title: String,

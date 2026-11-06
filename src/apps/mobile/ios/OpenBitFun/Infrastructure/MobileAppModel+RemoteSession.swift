@@ -786,6 +786,14 @@ extension MobileAppModel {
         coreAdapter?.deleteRemoteSession(sessionID: session.id)
     }
 
+    /// Archive hides the session on the host; the shared store drops the row and
+    /// the next directory refresh agrees. Nothing local is removed, so unlike
+    /// delete there is no pending-deletion marker to reconcile.
+    func archiveRemoteSession(_ session: ChatSession) {
+        guard !busy else { return }
+        coreAdapter?.archiveRemoteSession(sessionID: session.id)
+    }
+
     private func reconcileDirectoryAfterRemoteDeletion(_ sessions: [ChatSession], busy: Bool) {
         guard !pendingRemoteSessionDeletions.isEmpty, !busy else { return }
         let currentIDs = Set(sessions.map(\.id))

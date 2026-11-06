@@ -5,10 +5,11 @@ import kotlin.test.assertEquals
 
 class SessionActionPolicyTest {
     @Test
-    fun aRemoteSessionNeverOffersTheLocalStorageActions() {
+    fun aRemoteSessionOffersArchiveButNotExport() {
         val capabilities = SessionActionPolicy.resolve(SessionActionScope.REMOTE, "code", busy = false)
 
-        assertEquals(SessionActionCapabilities(true, false, false, true), capabilities)
+        // Archive is a host command; export stays local storage.
+        assertEquals(SessionActionCapabilities(true, true, false, true), capabilities)
     }
 
     @Test
